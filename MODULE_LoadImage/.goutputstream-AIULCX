@@ -1,0 +1,456 @@
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; NAME: CAVIAR_GETCAMERA_<Mission Name>
+; PURPOSE:
+; INPUTS:
+;	LABEL:
+;	LABELFORMAT:
+; OUTPUT:
+;-------------------------------------------------------------------------------
+FUNCTION caviar_getParams_cassini, header, lblformat, getcmat_methods
+	
+	;***************************************************************************
+	; Get parameters value from header
+	CASE lblformat OF
+		'INTVIC': BEGIN
+			labels = ['^NS$', '^EXPOSURE_DURATION$', '^SPACECRAFT_CLOCK_START_COUNT$', $
+					  '^INSTRUMENT_ID$', 'TARGET_NAME']
+			types = ['INT','DOUBLE','STRING','STRING','STRING']
+			values = headerXtract(header, labels, types)
+		END
+		'EXTVIC': BEGIN
+			labels = ['LINE_SAMPLES', 'EXPOSURE_DURATION', 'SPACECRAFT_CLOCK_START_COUNT', $
+					  'INSTRUMENT_ID', 'TARGET_NAME']
+			types = ['INT','DOUBLE','STRING','STRING','STRING']
+			values = headerXtract(header, labels, types, ['=','=','"','"','"'], ['','','"','"','"'])
+		END
+		ELSE: MESSAGE, "Wrong header format."
+	ENDCASE
+	FOR i=0, N_ELEMENTS(values)-2 DO IF ISA(values[i], /NULL) THEN RETURN, -1
+	
+	binning  = 1024/values[0]
+	exposure = values[1]/1000D
+	sclkch 	 = values[2]
+	camNAME	 = values[3]
+	tgtName	 = values[4]
+	
+	IF ISA(tgtName,'STRING') && tgtName NE '' THEN cspice_bodn2c, tgtName, tgtID, found
+	tgt = found ? {NAME:tgtName, ID:tgtID} : {}
+		
+	;***************************************************************************
+	; Set spacecraft and camera name and id
+	CASE camNAME OF
+		'ISSNA': cam = {LNAME: "CASS_ISSNA", ID: -82360L}
+		'ISSWA': cam = {LNAME: "CASS_ISSWA", ID: -82361L}
+		ELSE: RETURN, -1
+	ENDCASE
+	spc = {NAME: "CASSINI ORBITER", ID: -82}
+		
+	;***************************************************************************
+	; Load the meta-kernel file to get access to spacecrafts and cameras informations
+	metaKernel = GETENV('METAKERNEL_CASSINI')
+	caviar_loadspicekernels, metaKernel, loaded
+	IF NOT loaded THEN RETURN, -1
+	
+	;***************************************************************************
+	; Compute the epoch "et" and the encoded clock "sclkdp"
+	cspice_scencd, spc.ID, sclkch, sclkdp
+	cspice_sct2e, spc.ID, sclkdp, et 
+	et = et+(exposure*0.5d0)
+	
+	getcmat_methods = ["FILE","SPICE","header"]
+	
+	;***************************************************************************
+	params = CREATE_STRUCT('SCLKCH', sclkch, 'SCLKDP', sclkdp, 'ET', et, $
+		'BINNING', binning, 'EXPOSURE', exposure, 'METAKERNEL', metaKernel, $
+		'TARGET', tgt, 'CAM', cam, 'SPC', spc)  
+	   					   		   				   					
+	RETURN, params
+END
+
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+;	NAME:
+;	PURPOSE:
+;	INPUTS:
+;		header: Header of the image file
+;	OUTPUTS:
+;		camera: Structure containing camera informations
+;-------------------------------------------------------------------------------
+FUNCTION caviar_getParams_galileo, header, lblformat, getcmat_methods
+	
+	;***************************************************************************
+	; Get parameters value from header
+	CASE lblformat OF
+		'INTVIC': BEGIN
+			labels = ['^EXP$','^PARTITION$','^RIM$','^MOD91$','^MOD10$','^MOD8$','^NS$','^TARGET$']
+			types = ['DOUBLE','STRING','STRING','STRING','STRING', 'STRING','INT','STRING']
+			values = headerXtract(header, labels, types)
+			
+			FOR i=0, N_ELEMENTS(values)-2 DO IF ISA(values[i], /NULL) THEN RETURN, -1
+			help, values
+			
+			exposure 	= values[0]/1000.0D
+			par			= values[1]
+			rim			= values[2]
+			mod91		= values[3]
+			mod10		= values[4]
+			mod8		= values[5]
+			
+			binning  	= 800/values[6]
+			tgtName		= values[7]
+			
+			IF DOUBLE(rim) LT 10.0D2 THEN rim='0'+rim
+			sclkch = par+'/'+rim+':'+mod91+":"+mod10+":"+mod8	
+			sclkch2 = values[1]+'/'+STRJOIN(values[2:5],':')
+			print, sclkch, sclkch2
+			
+			IF ISA(tgtName,'STRING') && tgtName NE '' $
+			THEN cspice_bodn2c, tgtName, tgtID, found
+			tgt = found ? {NAME:tgtName, ID:tgtID} : {}
+		END
+		'EXTVIC': BEGIN
+			labels = ['EXPOSURE_DURATION','SPACECRAFT_CLOCK_START_COUNT','LINE_SAMPLES','TARGET_NAME']
+			types = ['INT','STRING','INT','STRING']
+			values = headerXtract(header, labels, types, ['=','"','=','"'], ['' ,'"','','"'])
+			
+			FOR i=0, N_ELEMENTS(values)-2 DO IF ISA(values[i], 'NULL') THEN RETURN, -1
+			
+			exposure = values[0]/1000.0D
+			sclkch   = values[1]
+			binning  = 800/values[2]
+			tgtName	 = values[3]
+			
+			IF ISA(tgtName,'STRING') && tgtName NE '' $
+			THEN cspice_bodn2c, tgtName, tgtID, found
+			tgt = found ? {NAME:tgtName, ID:tgtID} : {}
+		END
+		ELSE: MESSAGE, "Wrong header format."
+	ENDCASE
+	
+	;***************************************************************************
+	; Set spacecraft and camera id
+	spc = {NAME: 'GALILEO ORBITER', ID: -77L}
+	cam = {LNAME: "GLL_SSI", ID: -77001L}	;Solide State Imaging System
+	
+	;***************************************************************************
+	; Some Galileo images are 2x2 summed but the PDS archived images are ALL
+	; 800x800 VICAR images! There seems to be no flags in the image header to
+	; indicate that the image is summed.
+	; image.array = image.array[0:399,0:399]
+	;___________________________________________________________________________
+	
+	;***************************************************************************
+	; Load the meta-kernel file to get access to spacecrafts and cameras informations
+	metaKernel = GETENV('METAKERNEL_GALILEO')
+	caviar_loadspicekernels, metaKernel, loaded
+	IF loaded LE 0 THEN RETURN, -1
+	
+	;***************************************************************************
+	; Compute the epoch "et" and the encoded clock "sclkdp"
+	cspice_scencd, spc.ID, sclkch, sclkdp
+	cspice_sct2e, spc.ID, sclkdp, et 
+	et += (exposure*0.5D)
+	
+	getcmat_methods = ["FILE","SPICE","header"]
+	
+	;***************************************************************************
+	params = CREATE_STRUCT('SCLKCH', sclkch, 'SCLKDP', sclkdp, 'ET', et, $
+		'BINNING', binning, 'EXPOSURE', exposure, 'METAKERNEL', metaKernel, $
+		'TARGET', tgt, 'CAM', cam, 'SPC', spc) 
+					
+	RETURN, params
+END
+
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; NAME:
+; PURPOSE:
+; INPUTS:
+;	- label:
+; OUTPUT:
+;	- camera:
+;-------------------------------------------------------------------------------
+FUNCTION caviar_getParams_mariner9, header, lblformat, getcmat_methods
+	
+	;***************************************************************************	
+	; Get parameters value from header
+	CASE lblformat OF
+;		"EXTVIC": BEGIN
+;			labels = ['EXPOSURE_DURATION','IMAGE_TIME','INSTRUMENT_NAME','LINE_SAMPLES','TRAGET_NAME']
+;			types = ['DOUBLE', 'STRING', 'STRING','INT','STRING']
+;			values = headerXtract(header, labels, types, ['=','=','"','"','"'], ['<','Z','"','"','"'])
+;		END
+		'EXTVIC': BEGIN
+			labels = ['LINE_SAMPLES','EXPOSURE_DURATION','SPACECRAFT_CLOCK_START_COUNT', $
+						'INSTRUMENT_ID','TARGET_NAME']
+			types = ['INT','DOUBLE','STRING','STRING','STRING']
+			values = headerXtract(header, labels, types, $
+							['=','=','=','"','"'], ['','','','"','"'])
+			ctime = headerXtract(header, 'IMAGE_TIME', 'STRING', '=', 'Z')
+			ctime = ctime.toArray()
+			
+			binning  	= 1
+			exposure 	= values[1]*1000
+			sclkch 		= values[2]
+			camNAME		= values[3]
+			target		= values[4]
+		END
+		
+		"EXTCUB": BEGIN
+			labels = ['EXPOSURE_DURATION','START_TIME','INSTRUMENT_NAME','LINE_SAMPLES','TargetName']
+			types = ['DOUBLE', 'STRING', 'STRING','INT','STRING']
+			values = headerXtract(header, labels, types, ['=','=','"','"','"','"'], ['<','','"','"','"'])
+		END
+		ELSE: MESSAGE, "Wrong header format!"
+	ENDCASE
+	
+	FOR i=0, N_ELEMENTS(values)-2 DO IF ISA(values[i], /NULL) THEN RETURN, -1
+	
+;	exposure 	= values[0]*1000
+;	ctime 		= values[1]
+;	camNAME		= (STRSPLIT(values[2], '"', /EXTRACT))[0]
+;	binning  	= 1
+	
+	IF ISA(target,'STRING') && target NE '' $
+	THEN cspice_bodn2c, target, targetID, found
+	tgt = found ? {NAME:target, ID:targetID} : {}
+			
+	;***************************************************************************	
+	; Set spacecraft and camera id
+	spc = {NAME: "MARINER 9", ID: -9}
+	CASE camNAME OF
+;		"IMAGING SCIENCE SUBSYSTEM": 	 cam = {LNAME: "MR9_ISSNA", ID: -9001}
+;		"IMAGING SCIENCE SUBSYSTEM WAC": cam = {LNAME: "MR9_ISSWA", ID: -9002}
+		"ISS": 	 cam = {LNAME: "MR9_ISSNA", ID: -9001}
+		"ISSWA": cam = {LNAME: "MR9_ISSWA", ID: -9002}
+		ELSE: RETURN, -1
+	ENDCASE
+
+	;***************************************************************************	
+	; Load the meta-kernel file to get access to spacecrafts and cameras informations
+	metaKernel = GETENV('METAKERNEL_MARINER9')
+	caviar_loadspicekernels, metaKernel, loaded
+	IF loaded EQ 0 THEN RETURN, -3
+
+	;***************************************************************************
+	; Compute the ephemeris time "et", the encoded clock "sclkdp" and string clock "sclkch"
+	cspice_scencd, spc.ID, sclkch, sclkdp
+	cspice_sct2e, spc.ID, sclkdp, et 
+	print, et
+	et = et+(exposure*0.5d0)
+	
+	getcmat_methods = ["FILE","SPICE","header"]
+	
+	;***************************************************************************
+	params = CREATE_STRUCT('SCLKCH', sclkch, 'SCLKDP', sclkdp, 'ET', et, $
+		'BINNING', binning, 'EXPOSURE', exposure, 'METAKERNEL', metaKernel, $
+		'TARGET', tgt, 'CAM', cam, 'SPC', spc) 
+					
+	RETURN, params
+END
+
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; NAME:
+; PURPOSE:
+; INPUTS:
+;	- label:
+; OUTPUT:
+;	- camera:
+;-------------------------------------------------------------------------------
+FUNCTION caviar_getParams_newHorizons, header, lblformat, getcmat_methods
+	
+	;***************************************************************************
+	; Get parameters value from header
+	labels = ['NAXIS1', 'EXPTIME', 'STARTMET', 'HOSTNAME']
+	types = ['INT', 'DOUBLE', 'STRING', 'STRING']
+	values = headerXtract(header, labels, types, ['=','=','=',"'"], ['/','/','/',"'"])
+	help, values
+	FOREACH val, values DO IF ISA(val, /NULL) THEN BEGIN
+		PRINT, "Cannot find all needed values in the header." 
+		RETURN, -1
+	ENDIF
+	print, values
+	
+	binning  = 1024/values[0]
+	exposure = values[1]
+	sclkch 	 = values[2]
+	spcNAME	 = values[3]
+	
+	;***************************************************************************
+	; Set spacecraft and camera id
+	IF NOT STRMATCH(spcNAME,"NEW HORIZONS") THEN RETURN,-1 ELSE spcID=-98L
+	camLNAME = "NH_LORRI"
+	camNAME = "LORRI"
+	camID = -98300L	;NH_LORRI_1X1 = -98301	+ NH_LORRI_4X4 = -98302
+	
+	;***************************************************************************
+	; Load the meta-kernel file to get access to spacecrafts and cameras informations
+	metaKernel = GETENV('METAKERNEL_NEWHORIZONS')
+	caviar_loadspicekernels, metaKernel, loaded
+	IF loaded LE 0 THEN RETURN, -1
+
+	;***************************************************************************
+	; Compute the epoch "et" and the encoded clock "sclkdp"
+	cspice_scencd, spcID, sclkch, sclkdp
+	cspice_sct2e, spcID, sclkdp, et 
+	et = et+(exposure*0.5d0)
+	
+	getcmat_methods = ["FILE","header","SPICE"]
+	
+	;***************************************************************************
+	camera = CREATE_STRUCT('LNAME', camLNAME, 'ID', camID, $
+		'SPCNAME', spcNAME,'SPCID', spcID, $
+		'SCLKCH', sclkch, 'SCLKDP', sclkdp, 'ET', et, $
+		'BINNING', binning, 'EXPOSURE', exposure, 'METAKERNEL', metaKernel)
+		
+	RETURN, camera
+END
+
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; NAME:
+; PURPOSE:
+; INPUTS:
+;	- header:
+; OUTPUT:
+;	- camera:
+;-------------------------------------------------------------------------------
+FUNCTION caviar_getParams_viking, header, lblformat, getcmat_methods
+	
+	;***************************************************************************
+	; Get parameters value from header
+	CASE lblformat OF
+		"EXTVIC": labels = ['EXPOSURE_DURATION', 'IMAGE_TIME', 'SPACECRAFT_NAME', 'INSTRUMENT_NAME']
+		"EXTCUB": labels = ['ExposureDuration', ' StartTime', 'SpacecraftName', 'InstrumentId']
+		ELSE: MESSAGE, "Wrong header format!"
+	ENDCASE
+	types = ['DOUBLE', 'STRING', 'STRING', 'STRING']
+	values = headerXtract(header, labels, types, '=', '')
+	FOREACH value, values DO IF ISA(value, /NULL) THEN RETURN, -1
+	
+	exposure 	= values[0]
+	ctime 		= values[1]
+	spcNAME	= STRTRIM(values[2], 2)
+	camNAME	= STRTRIM(values[3], 2)
+	binning = 1
+	
+	IF STREGEX(ctime, "Z") NE -1 THEN ctime = STRMID(ctime, 0, STRLEN(ctime)-1 )
+	
+	;***************************************************************************
+	; Set spacecraft and camera id
+	CASE spcNAME OF
+		"VIKING_ORBITER_1": spcID=-27L
+		"VIKING_ORBITER_2": spcID=-30L
+		ELSE: MESSAGE, "header value(s) seems not correspond to Viking spacecraft."
+	ENDCASE
+	CASE camNAME OF
+		"VISUAL_IMAGING_SUBSYSTEM_CAMERA_A": camID = spcID*1000-1
+		"VISUAL_IMAGING_SUBSYSTEM_CAMERA_B": camID = spcID*1000-2
+		ELSE: MESSAGE, "header value(s) seems not correspond to Viking spacecraft."
+	ENDCASE
+	
+	CASE spcName OF
+		"VIKING_ORBITER_1": lname1 = "VO1"
+		"VIKING_ORBITER_2": lname1 = "VO2"
+	ENDCASE	
+	CASE camName OF
+		"VISUAL_IMAGING_SUBSYSTEM_CAMERA_A": lname2="VISA"
+		"VISUAL_IMAGING_SUBSYSTEM_CAMERA_B": lname2="VISB"
+	ENDCASE
+	camLNAME = lname1+'_'+lname2
+	
+	;***************************************************************************
+	; Load the meta-kernel file to get access to spacecrafts and cameras informations
+	metaKernel = GETENV('METAKERNEL_VIKING')
+	caviar_loadspicekernels, metaKernel, loaded
+	IF loaded EQ 0 THEN RETURN, -1
+	
+	;***************************************************************************
+	; Compute the epoch "et", the encoded clock "sclkdp" and string clock "sclkch"
+	cspice_str2et, ctime, et
+	cspice_sce2c, spcID, et, sclkdp
+	cspice_sce2s, spcID, et, sclkch
+	et = et+(exposure*0.5d0)
+	
+	getcmat_methods = ["FILE","SPICE","header"]
+	
+	;***************************************************************************
+	camera = CREATE_STRUCT('LNAME', camLNAME, 'ID', camID, $
+		'SPCNAME', spcNAME,'SPCID', spcID, $
+		'SCLKCH', sclkch, 'SCLKDP', sclkdp, 'ET', et, $
+		'BINNING', binning, 'EXPOSURE', exposure, 'METAKERNEL', metaKernel)
+		
+	RETURN, camera
+END
+
+
+;+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+; NAME:
+; PURPOSE:
+; INPUTS:
+;	- label:
+; OUTPUT:
+;	- camera:
+;-------------------------------------------------------------------------------
+FUNCTION caviar_getParams_voyager, header, lblformat, getcmat_methods
+	
+	;***************************************************************************
+	; Get parameters value from header
+	CASE lblformat OF
+		"EXTVIC": labels = ['EXPOSURE_DURATION', 'IMAGE_TIME', 'SPACECRAFT_NAME', 'INSTRUMENT_NAME']
+		"EXTCUB": labels = ['EXPOSURE_DURATION', 'START_TIME', 'INSTRUMENT_HOST_NAME', 'INSTRUMENT_NAME']
+		ELSE: MESSAGE, "Wrong header format!"
+	ENDCASE
+	types = ['DOUBLE', 'STRING', 'STRING', 'STRING']
+	values = headerXtract(header, labels, types, '=', '')
+	FOREACH value, values DO IF ISA(value, /NULL) THEN RETURN, -1
+	
+	exposure = values[0]
+	ctime 	 = (STRSPLIT(values[1], 'Z', /EXTRACT))[0]
+	spcNAME	 = (STRSPLIT(values[2], '"', /EXTRACT))[0]
+	camNAME	 = (STRSPLIT(values[3], '"', /EXTRACT))[0]
+	binning  = 1
+	
+	;***************************************************************************
+	; Set spacecraft and camera id
+	CASE spcNAME OF
+		"VOYAGER_1": BEGIN
+			spcID = -31L
+			lname1 = "VG1"
+		END
+		"VOYAGER_2": BEGIN
+			spcID = -32L
+			lname1 = "VG2"
+		END
+		ELSE: MESSAGE, "header value(s) seems not correspond to Voyager spacecraft."
+	ENDCASE
+	CASE camNAME OF
+		"NARROW_ANGLE_CAMERA": BEGIN
+			camID = spcID*1000-1
+			lname2 = "ISSNA"
+		END
+		"WIDE_ANGLE_CAMERA": BEGIN
+			camID = spcID*1000-2
+			lname2 = "ISSWA"
+		END
+		ELSE: MESSAGE, "header value(s) seems not correspond to Voyager spacecraft."
+	ENDCASE
+	camLNAME = lname1+'_'+lname2
+		
+	;***************************************************************************
+	; Load the meta-kernel file to get access to spacecrafts and cameras informations
+	metaKernel = GETENV('METAKERNEL_VOYAGER')
+	caviar_loadspicekernels, metaKernel, loaded
+	IF loaded LE 0 THEN RETURN, -1
+	
+	;***************************************************************************
+	; Compute the epoch "et", the encoded/string clock "sclkdp"/"sclkch"
+	cspice_str2et, ctime, et
+	cspice_sce2c, spcID, et, sclkdp
+	cspice_sce2s, spcID, et, sclkch
+	
+	getcmat_methods = ["FILE","SPICE","header"]
+	
+	;***************************************************************************
+	camera = CREATE_STRUCT('L

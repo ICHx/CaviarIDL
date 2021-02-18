@@ -1,0 +1,10 @@
+01Jun17		r1.0	First release version.
+			Based on caviar_v2.1nc
+			THIS VERSION DOES NOT INCLUDE SPICE KERNELS. THEY MUST BE DOWNLOADED SEPARATELY.
+
+This software is licensed under a Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License.
+
+For details see: https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+For a detailed desciption of the software and how to install it, see CaVIaR_user_guide_r1.0.pdf, in this directory.
+

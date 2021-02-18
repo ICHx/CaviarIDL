@@ -1,0 +1,98 @@
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# PURPOSE:
+#	This file contains spacecraft camera parameters for CaVIaR software.
+#
+# DATA CONTENT:
+#       Cassini data are from Owen, W.M., JPL IOM 312.E-2003-001, 09may2003.
+# 
+# If you are adding your own instrument or modifying an existing one with better
+# values, consider using fitted values rather than default specifications.
+#
+# ACCESS THE DATA:
+#	To read this file use: 'caviar_readCamParams.pro'
+#
+# DATA FORMAT:
+# 	Given the camera 'lname' (for example "CASS_ISSNA"), start reading at 
+# "BEGIN_OBJECT = <cam_lname>" and stop at "<cam_lname> = END_OBJECT".
+# - During the reading of the lines, the routine removes commented parts ie. any 
+# character after the "#". 
+# - Parameter names and value(s) must be seperated by an "=". The "space" 
+# surrounding the "=" is not necessary. 
+# - The values forming an array must be seperated by a "space".
+#-------------------------------------------------------------------------------
+
+
+********************************************************************************
+* Cassini Narow Angle Camera (-82361) parameters
+********************************************************************************
+#Values are from Owen, W.M., JPL IOM 312.E-2003-001, 09may2003:
+BEGIN_OBJECT = CASS_ISSNA
+
+	# Pixel field of view (radian - from the SSR paper)
+	# -> Needed for searching for stars in catalogues.
+	FOVPIX = 5.99007D-06
+
+	# Focal length (mm):
+	# -> Needed for image coords setting.
+	FOCAL = 2002.703D
+
+	# Camera center (S0,L0) in sample/line.
+	CENTER = 511.5D 511.5D
+	
+	# Camera transformation matrix (pixel/mm):
+	# Kmat = [ [Kx, Kxy, Kxxy],[Kyx, Ky, Kyxy] ]
+	# -> Kx, Ky, needed for image coords setting. Others are optional.
+	# Data format: KMAT = Kx Kyx Kxxy Kxy Ky Kyxy
+	KMAT = 83.33333D 0D 0D 0D 83.3428D 0D
+	
+	# Camera optical distorsion parameters: Epsilon = [e1, e2, e3, e4, e5, e6]
+	# -> Optional - used for image coords setting.
+	EPSILON = 0D 8.28D-6 0D 0D 5.45D-6 -19.67D-6
+	
+	# Camera offset angles (degree - from fk/cas_v39.tf):
+	# Angles = [cone, clock, twist] = [X, Psi, Omega]
+	# -> Optional - used if instrument cmat not found.
+	ANGLES = -90.009796D -0.03300D 89.9148D
+
+        #njc -> Added for completeness (but not used, except in QMPF):
+	BIGOMEGA = 0.095D0
+	
+CASS_ISSNA = END_OBJECT
+
+********************************************************************************
+* Cassini Wide Angle Camera (-82361) parameters
+********************************************************************************
+#Values are from Owen, W.M., JPL IOM 312.E-2003-001, 09may2003:
+BEGIN_OBJECT = CASS_ISSWA
+
+	# Pixel field of view (radian - from the SSR paper)
+	# -> Needed for searching for stars in catalogues.
+	FOVPIX = 5.9749D-05
+
+	# Focal length (mm):
+	# -> Needed for image coords setting.
+	FOCAL = 200.7761D		
+
+	# Camera center (S0,L0) in sample/line.
+	CENTER = 511.5D 511.5D
+	
+	# Camera transformation matrix (pixel/mm):
+	# Kmat = [ [Kx, Kxy, Kxxy],[Kyx, Ky, Kyxy] ]
+	# -> Kx, Ky, needed for image coords setting. Others are optional.
+	# Data format: KMAT = Kx Kyx Kxxy Kxy Ky Kyxy
+	KMAT = 83.33333D 0D 0D 0D 83.34114D 0D
+	
+	# Camera optical distortion parameters:
+	# Epsilon = [e1, e2, e3, e4, e5, e6]
+	# -> Optional - used for image coords setting.
+	EPSILON = 0D 60.89D-6 0D 0D 4.93D-6 -72.28D-6
+	
+	# Camera offset angles (degree - from fk/cas_v39.tf):
+	# Angles = [cone, clock, twist] = [X, Psi, Omega]
+	# -> Optional - used if instrument cmat not found.
+	ANGLES = -89.985421D -0.069806D 89.9736D
+
+        #njc -> Added for completeness (but not used, except in QMPF):
+        BIGOMEGA = -0.018D0
+	
+CASS_ISSWA = END_OBJECT
